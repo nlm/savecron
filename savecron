@@ -1,0 +1,81 @@
+#!/bin/bash
+#
+#    Savecron: Versioned crontab autosaver for POSIX crontab command
+#    Copyright (C) 2012 Nicolas Limage
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+usage()
+{
+	echo "usage: $0 <dir> [<user> [...]]"
+	echo ""
+	echo "saves crontabs of this system or only specific users"
+}
+
+savecron()
+{
+	USER="$1"
+	DATE="`date +%Y%m%d-%H%M%S`"
+	FNAME="crontab.$USER.$DATE"
+
+	if ! crontab -u "$USER" -l > "$FNAME" 2>/dev/null; then
+		rm -f "$FNAME"
+		return
+	fi
+
+	if [ -e "crontab.$USER.current" ] && diff -q "$FNAME" "crontab.$USER.current" >/dev/null; then
+		rm -f "$FNAME"
+		return
+	fi
+
+	if [ -e "crontab.$USER.current" ]; then
+		gzip -9 "`readlink crontab.$USER.current`"
+	fi
+
+	rm -f "crontab.$USER.current"
+	ln -s "$FNAME" "crontab.$USER.current"
+
+	echo "saved cron for $USER"
+}
+
+if [ "$#" -lt 1 ]; then
+	echo "error: not enough arguments"
+	usage
+	exit 1
+fi
+
+SAVEDIR="$1"
+shift
+if [ ! -d "$SAVEDIR" ]; then
+	echo "error: invalid directory: '$SAVEDIR'"
+	usage
+	exit 1
+fi
+
+if ! cd "$SAVEDIR"; then
+	echo "error: unable to cd $SAVEDIR"
+	exit 1
+fi
+
+if [ "$#" -gt 0 ]; then
+	while [ "$1" != "" ]; do
+		savecron "$1"
+		shift
+	done
+else
+	for user in $(cut -d: -f 1 /etc/passwd); do
+		savecron "$user"
+	done
+fi
